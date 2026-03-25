@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>협업증진팀 주간 세미나 대시보드</title>
+    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <style>
+        .status-green { color: #10B981; }
+        .status-yellow { color: #F59E0B; }
+        .status-red { color: #EF4444; }
+        .modal { display: none; position: fixed; z-index: 50; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    </style>
+</head>
+<body class="bg-slate-100 p-4 md:p-8 font-sans">
+
+    <header class="flex flex-wrap justify-between items-center mb-6 bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+        <h1 class="text-2xl font-extrabold text-slate-800 tracking-tight">📊 협업증진팀 주간 세미나 대시보드</h1>
+        <div class="flex items-center gap-3 mt-4 sm:mt-0">
+            <input type="date" id="startDate" class="border border-slate-300 p-2 rounded text-sm text-slate-700">
+            <span class="text-slate-500">~</span>
+            <input type="date" id="endDate" class="border border-slate-300 p-2 rounded text-sm text-slate-700">
+            <button onclick="refreshData()" class="bg-blue-600 text-white px-5 py-2 rounded text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm">
+                조회
+            </button>
+        </div>
+    </header>
+
+    <div class="grid grid-cols-1 xl:grid-cols-4 gap-6 mb-6">
+        <div class="xl:col-span-1 bg-white p-5 rounded-xl shadow-sm border border-slate-200 flex flex-col">
+            <h2 class="text-lg font-bold mb-2 text-slate-800">팀 통합 전략적 자원 배분</h2>
+            <div id="donut_chart" class="w-full flex-1 min-h-[250px] flex items-center justify-center text-slate-400">
+                로딩 중...
+            </div>
+        </div>
+
+        <div class="xl:col-span-3">
+            <h2 class="text-lg font-bold mb-4 text-slate-800 flex items-center gap-2">
+                🚀 프로젝트별 추진 현황
+                <span id="project_count" class="text-sm font-normal text-slate-500 bg-slate-100 px-2 py-1 rounded-full">0건</span>
+            </h2>
+            <div id="project_cards_container" class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                <div class="text-slate-500 p-4">데이터를 불러오는 중입니다...</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+        <h2 class="text-md font-bold mb-3 text-slate-700">📌 상시업무 목록</h2>
+        <div class="overflow-x-auto max-h-48">
+            <table class="w-full text-left border-collapse text-sm min-w-[600px]">
+                <thead class="sticky top-0 bg-slate-50 shadow-sm z-10">
+                    <tr class="text-slate-600 font-semibold border-b border-slate-200">
+                        <th class="p-2 w-1/4">프로젝트명</th>
+                        <th class="p-2 w-2/4">업무내용</th>
+                        <th class="p-2 w-1/8">담당자</th>
+                        <th class="p-2 w-1/8 text-center">비고</th>
+                    </tr>
+                </thead>
+                <tbody id="routine_tasks_body" class="text-slate-700 divide-y divide-slate-100">
+                    <tr><td colspan="4" class="p-4 text-center text-slate-400">데이터 대기 중...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="commonModal" class="modal flex items-center justify-center">
+        <div class="bg-white rounded-xl p-6 max-w-2xl w-full mx-4 shadow-2xl relative max-h-[90vh] flex flex-col">
+            <button onclick="closeModal()" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
+            <div id="modalContent" class="overflow-y-auto pr-2"></div>
+            <div class="text-right mt-4 pt-4 border-t">
+                <button onclick="closeModal()" class="bg-slate-500 text-white px-5 py-2 rounded text-sm hover:bg-slate-600">닫기</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 🚨 1단계에서 만든 CSV 링크 3개를 아래 따옴표 안에 각각 붙여넣어!
+        // ==========================================
+        const URL_PROJECTS = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTrm-vt2x5APB4umgHpquPu_leD7lztsupjZXd9nJT0qcNE7Al6L3sUqA1ctRHSLUn5OMnWzpVXtgQR/pub?gid=0&single=true&output=csv"; 
+        const URL_ROUTINE = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTrm-vt2x5APB4umgHpquPu_leD7lztsupjZXd9nJT0qcNE7Al6L3sUqA1ctRHSLUn5OMnWzpVXtgQR/pub?gid=19111981&single=true&output=csv";
+        const URL_LOGS = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTrm-vt2x5APB4umgHpquPu_leD7lztsupjZXd9nJT0qcNE7Al6L3sUqA1ctRHSLUn5OMnWzpVXtgQR/pub?gid=1266255410&single=true&output=csv";
+
+        google.charts.load('current', {'packages':['corechart', 'gauge']});
+        google.charts.setOnLoadCallback(initialize);
+
+        let globalProjectsData = [];
+
+        function initialize() {
+            const today = new Date();
+            document.getElementById('endDate').valueAsDate = today;
+            const lastMonth = new Date(today.setMonth(today.getMonth() - 1));
+            document.getElementById('startDate').valueAsDate = lastMonth;
+            
+            if(URL_PROJECTS.includes("여기에")) {
+                alert("코드 116번째 줄 쯤에 있는 URL_PROJECTS 등 링크 3개를 먼저 수정해줘야 해!");
+                return;
+            }
+            refreshData();
+        }
+
+        function refreshData() {
+            fetchCSV(URL_PROJECTS, processProjectData, 'project_cards_container');
+            fetchCSV(URL_ROUTINE, processRoutineData, 'routine_tasks_body');
+        }
+
+        // CSV 무적 파싱 함수
+        function fetchCSV(url, callback, targetId) {
+            Papa.parse(url, {
+                download: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    // 첫 번째 줄(헤더) 제외하고 데이터만 넘김
+                    callback(results.data.slice(1));
+                },
+                error: function(err) {
+                    console.error("CSV 파싱 에러:", err);
+                    document.getElementById(targetId).innerHTML = `<div class="text-red-500 p-4">데이터 로드 실패: 링크를 다시 확인해봐!</div>`;
+                }
+            });
+        }
+
+        function getVal(row, index, isNumber = false) {
+            if(!row || row.length <= index || !row[index]) return isNumber ? 0 : '';
+            const val = row[index].trim();
+            if(isNumber) {
+                const num = parseFloat(val.replace(/[^0-9.-]+/g,""));
+                return isNaN(num) ? 0 : num;
+            }
+            return val;
+        }
+
+        function processProjectData(rows) {
+            globalProjectsData = rows;
+            renderDonutChart(rows);
+            renderProjectCards(rows);
+            document.getElementById('project_count').innerText = `${rows.length}건`;
+        }
+
+        function renderDonutChart(rows) {
+            const dataArr = [['Project', 'Allocation']];
+            rows.forEach(row => {
+                const pName = getVal(row, 0); // A열
+                let progress = getVal(row, 3, true); // D열
+                if (pName && progress > 0) dataArr.push([pName, progress]);
+            });
+
+            if (dataArr.length <= 1) {
+                document.getElementById('donut_chart').innerHTML = '차트를 그릴 데이터가 부족해.';
+                return;
+            }
+
+            const data = google.visualization.arrayToDataTable(dataArr);
+            const options = { pieHole: 0.5, chartArea: {width: '100%', height: '80%'}, legend: { position: 'bottom' }, pieSliceText: 'none' };
+            const chart = new google.visualization.PieChart(document.getElementById('donut_chart'));
+            chart.draw(data, options);
+        }
+
+        function renderProjectCards(rows) {
+            const container = document.getElementById('project_cards_container');
+            container.innerHTML = '';
+
+            rows.forEach((row, index) => {
+                const pName = getVal(row, 0); 
+                const pm = getVal(row, 1);    
+                let progress = getVal(row, 3, true); 
+                if(progress <= 1 && progress > 0) progress = progress * 100; // 0.8 -> 80
+
+                const planStart = getVal(row, 4); 
+                const planEnd = getVal(row, 5);   
+                
+                const health = progress >= 90 ? 'status-green' : (progress >= 60 ? 'status-yellow' : 'status-red');
+                const healthText = progress >= 90 ? '정상' : (progress >= 60 ? '지연 위험' : '지연');
+
+                const cardHtml = `
+                    <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 border-l-4 border-l-blue-500 hover:shadow-md transition">
+                        <div class="flex justify-between items-start mb-3">
+                            <div>
+                                <h3 class="text-base font-bold text-slate-800 truncate" title="${pName}">${pName}</h3>
+                                <p class="text-slate-500 text-xs mt-1">PM: <span class="font-semibold text-slate-700">${pm}</span></p>
+                            </div>
+                            <button onclick="showInfoModal(${index})" class="bg-indigo-50 text-indigo-600 px-2 py-1 rounded text-xs font-bold hover:bg-indigo-100 whitespace-nowrap">상세 정보 ⓘ</button>
+                        </div>
+                        <div class="flex gap-2 mb-4 text-xs">
+                            <div class="bg-slate-50 p-2 rounded flex-1">
+                                <p class="text-slate-400 mb-1">계획 기간</p>
+                                <p class="font-medium text-slate-700">${planStart} ~ ${planEnd}</p>
+                            </div>
+                            <div class="bg-slate-50 p-2 rounded flex-1 text-right">
+                                <p class="text-slate-400 mb-1">건전성</p>
+                                <span class="font-bold ${health}">● ${healthText}</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-4">
+                            <div id="gauge_${index}" style="width: 80px; height: 80px;"></div>
+                            <button onclick="showLogModal('${pName}')" class="flex-1 bg-slate-100 text-slate-600 py-2 rounded text-sm font-semibold border border-slate-200 hover:bg-blue-50 hover:text-blue-600 transition">
+                                📝 수행업무 로그 확인
+                            </button>
+                        </div>
+                    </div>
+                `;
+                container.innerHTML += cardHtml;
+                setTimeout(() => drawGauge(index, progress), 50);
+            });
+        }
+
+        function drawGauge(id, val) {
+            const el = document.getElementById('gauge_'+id);
+            if(!el) return;
+            const data = google.visualization.arrayToDataTable([['Label', 'Value'], ['', Number(val.toFixed(1))]]);
+            const options = { width: 80, height: 80, redFrom: 0, redTo: 50, yellowFrom: 50, yellowTo: 85, greenFrom: 85, greenTo: 100, minorTicks: 5 };
+            new google.visualization.Gauge(el).draw(data, options);
+        }
+
+        function processRoutineData(rows) {
+            const tbody = document.getElementById('routine_tasks_body');
+            if(!rows || rows.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="p-3 text-center text-slate-500">등록된 상시업무가 없어.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = rows.map(row => {
+                const taskName = getVal(row, 0); 
+                const taskDesc = getVal(row, 1); 
+                const manager = getVal(row, 2);  
+                const link = getVal(row, 3);     
+
+                let btnHtml = '-';
+                if(link && link.startsWith('http')) {
+                    btnHtml = `<a href="${link}" target="_blank" class="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-semibold hover:bg-blue-200">바로가기</a>`;
+                }
+
+                return `
+                    <tr class="hover:bg-slate-50 transition-colors">
+                        <td class="p-2 truncate max-w-[150px]" title="${taskName}">${taskName}</td>
+                        <td class="p-2 text-slate-600 text-xs">${taskDesc}</td>
+                        <td class="p-2 text-center">${manager}</td>
+                        <td class="p-2 text-center">${btnHtml}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function showInfoModal(index) {
+            const row = globalProjectsData[index];
+            const pName = getVal(row, 0);
+            const purpose = getVal(row, 2) || '내용 없음';
+            const scope = getVal(row, 3) || '내용 없음';
+
+            document.getElementById('modalContent').innerHTML = `
+                <h2 class="text-xl font-bold mb-4 text-slate-800 border-b pb-2">📌 ${pName} 상세정보</h2>
+                <div class="space-y-4 text-sm">
+                    <div class="bg-slate-50 p-4 rounded">
+                        <h4 class="font-bold text-blue-700 mb-2">배경 및 목적</h4>
+                        <p class="text-slate-700 whitespace-pre-wrap">${purpose}</p>
+                    </div>
+                    <div class="bg-slate-50 p-4 rounded">
+                        <h4 class="font-bold text-blue-700 mb-2">업무 범위</h4>
+                        <p class="text-slate-700 whitespace-pre-wrap">${scope}</p>
+                    </div>
+                </div>
+            `;
+            document.getElementById('commonModal').style.display = 'flex';
+        }
+
+        function showLogModal(projectName) {
+            document.getElementById('modalContent').innerHTML = `
+                <h2 class="text-xl font-bold mb-4 text-slate-800 border-b pb-2">📝 [${projectName}] 업무 로그</h2>
+                <p class="text-slate-500 text-sm mb-3">데이터 불러오는 중...</p>
+            `;
+            document.getElementById('commonModal').style.display = 'flex';
+
+            fetchCSV(URL_LOGS, (rows) => {
+                let logHtml = `<table class="w-full text-xs text-left border-collapse">
+                    <thead class="bg-slate-100 text-slate-600"><tr class="border-b">
+                        <th class="p-2 w-1/5">일자</th><th class="p-2 w-2/5">수행내용</th><th class="p-2 w-1/5">이슈사항</th><th class="p-2 w-1/5 text-center">성과품</th>
+                    </tr></thead><tbody class="divide-y divide-slate-100">`;
+                
+                let found = false;
+                rows.forEach(row => {
+                    const rowProjectName = getVal(row, 0); 
+                    if(rowProjectName === projectName || !rowProjectName) {
+                        found = true;
+                        const date = getVal(row, 1);
+                        const content = getVal(row, 2);
+                        const issue = getVal(row, 3);
+                        const link = getVal(row, 4);
+
+                        let linkBtn = '-';
+                        if(link && link.startsWith('http')) {
+                            linkBtn = `<a href="${link}" target="_blank" class="bg-green-100 text-green-700 px-2 py-1 rounded hover:bg-green-200">열기</a>`;
+                        }
+                        logHtml += `<tr><td class="p-2">${date}</td><td class="p-2 text-slate-600">${content}</td><td class="p-2 text-red-500">${issue}</td><td class="p-2 text-center">${linkBtn}</td></tr>`;
+                    }
+                });
+
+                if(!found) logHtml += `<tr><td colspan="4" class="p-4 text-center text-slate-400">등록된 로그가 없어.</td></tr>`;
+                logHtml += `</tbody></table>`;
+
+                document.getElementById('modalContent').innerHTML = `
+                    <h2 class="text-xl font-bold mb-4 text-slate-800 border-b pb-2">📝 [${projectName}] 업무 로그</h2>
+                    <div class="overflow-y-auto max-h-[50vh]">${logHtml}</div>
+                `;
+            }, 'modalContent');
+        }
+
+        function closeModal() {
+            document.getElementById('commonModal').style.display = 'none';
+        }
+    </script>
+</body>
+</html>

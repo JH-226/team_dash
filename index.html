@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>협업증진팀 주간 세미나 대시보드</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #f4f7f9;
+            --card-bg: #ffffff;
+            --primary: #2c3e50;
+            --green: #27ae60; --yellow: #f1c40f; --red: #e74c3c;
+        }
+        body { font-family: 'Pretendard', sans-serif; background: var(--bg-color); margin: 0; padding: 20px; color: var(--primary); }
+        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+        .container { max-width: 1200px; margin: auto; }
+        
+        /* Filter Section */
+        .filter-bar { background: var(--card-bg); padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; display: flex; gap: 10px; align-items: center; }
+        
+        /* Table Style */
+        .card { background: var(--card-bg); padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 25px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { padding: 12px; border-bottom: 1px solid #eee; text-align: left; }
+        th { background: #f8f9fa; }
+
+        /* Project Grid */
+        .project-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(450px, 1fr)); gap: 20px; }
+        .status-light { width: 20px; height: 20px; border-radius: 50%; display: inline-block; margin-right: 8px; }
+        
+        /* Button & Modal */
+        .btn { padding: 6px 12px; cursor: pointer; border: none; border-radius: 4px; background: #3498db; color: white; }
+        .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); }
+        .modal-content { background: white; margin: 10% auto; padding: 20px; width: 50%; border-radius: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>📊 협업증진팀 주간 세미나</h1>
+        <div class="filter-bar">
+            <span>기간 조회:</span>
+            <input type="date" id="startDate"> ~ <input type="date" id="endDate">
+            <button class="btn" onclick="filterData()">조회</button>
+        </div>
+    </header>
+
+    <section class="card">
+        <h3>📅 상시업무 목록</h3>
+        <table id="commonTaskTable">
+            <thead>
+                <tr>
+                    <th>프로젝트명</th>
+                    <th>업무내용</th>
+                    <th>담당자</th>
+                    <th>비고</th>
+                </tr>
+            </thead>
+            <tbody>
+                </tbody>
+        </table>
+    </section>
+
+    <section class="project-grid" id="projectContainer">
+        </section>
+</div>
+
+<div id="descModal" class="modal">
+    <div class="modal-content">
+        <h2 id="modalTitle"></h2>
+        <p id="modalBody"></p>
+        <button class="btn" onclick="closeModal()">닫기</button>
+    </div>
+</div>
+
+<script>
+    // 게시된 구글 시트 CSV URL 입력 (여기에 실제 URL을 넣으세요)
+    const URL_TASKS = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTrm-vt2x5APB4umgHpquPu_leD7lztsupjZXd9nJT0qcNE7Al6L3sUqA1ctRHSLUn5OMnWzpVXtgQR/pubhtml?gid=0&single=true";
+    const URL_PROJECTS = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTrm-vt2x5APB4umgHpquPu_leD7lztsupjZXd9nJT0qcNE7Al6L3sUqA1ctRHSLUn5OMnWzpVXtgQR/pubhtml?gid=19111981&single=true";
+    const URL_LOGS = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTrm-vt2x5APB4umgHpquPu_leD7lztsupjZXd9nJT0qcNE7Al6L3sUqA1ctRHSLUn5OMnWzpVXtgQR/pubhtml?gid=1266255410&single=true";
+
+    async function fetchData() {
+        // 실제 운영 시에는 아래 Papa.parse에 위 URL 변수를 넣으세요.
+        // 현재는 구조 예시를 위해 더미 데이터를 시뮬레이션하거나 로드 로직만 작성합니다.
+        loadCommonTasks();
+        loadProjects();
+    }
+
+    function loadCommonTasks() {
+        Papa.parse(URL_TASKS, {
+            download: true,
+            header: true,
+            complete: function(results) {
+                const tbody = document.querySelector("#commonTaskTable tbody");
+                tbody.innerHTML = results.data.map(row => `
+                    <tr>
+                        <td>${row.프로젝트명}</td>
+                        <td>${row.업무내용}</td>
+                        <td>${row.담당자}</td>
+                        <td><button class="btn" onclick="window.open('${row.링크}')">링크 열기</button></td>
+                    </tr>
+                `).join('');
+            }
+        });
+    }
+
+    function loadProjects() {
+        Papa.parse(URL_PROJECTS, {
+            download: true,
+            header: true,
+            complete: function(results) {
+                const container = document.getElementById("projectContainer");
+                container.innerHTML = "";
+                results.data.forEach((p, index) => {
+                    const card = document.createElement("div");
+                    card.className = "card";
+                    
+                    // 신호등 색상 결정
+                    const statusColor = p.상태 === '정상' ? 'var(--green)' : (p.상태 === '지연위험' ? 'var(--yellow)' : 'var(--red)');
+
+                    card.innerHTML = `
+                        <div style="display:flex; justify-content:space-between;">
+                            <h4>${p.프로젝트명}</h4>
+                            <div><span class="status-light" style="background:${statusColor}"></span>${p.상태}</div>
+                        </div>
+                        <p><b>PM:</b> ${p.PM} | <b>진행률:</b> ${p.진행률}%</p>
+                        <p><small>계획: ${p.계획시작} ~ ${p.계획마감} (${p.계획기간}일)</small></p>
+                        <div style="margin: 10px 0;">
+                            <button class="btn" onclick="showInfo('${p.프로젝트명}', '${p.상세내용}')">프로젝트 정보</button>
+                            <button class="btn" style="background:#2ecc71" onclick="showLogs('${p.프로젝트명}')">수행업무로그</button>
+                        </div>
+                        <canvas id="chart-${index}" width="200" height="100"></canvas>
+                    `;
+                    container.appendChild(card);
+                    renderGauge(`chart-${index}`, p.진행률, p.계획진행률);
+                });
+            }
+        });
+    }
+
+    function renderGauge(canvasId, actual, planned) {
+        new Chart(document.getElementById(canvasId), {
+            type: 'bar',
+            data: {
+                labels: ['진행률 비교 (%)'],
+                datasets: [
+                    { label: '실제', data: [actual], backgroundColor: '#3498db' },
+                    { label: '계획', data: [planned], backgroundColor: '#bdc3c7' }
+                ]
+            },
+            options: { indexAxis: 'y', scales: { x: { max: 100 } } }
+        });
+    }
+
+    function showInfo(title, desc) {
+        document.getElementById("modalTitle").innerText = title;
+        document.getElementById("modalBody").innerText = desc;
+        document.getElementById("descModal").style.display = "block";
+    }
+
+    function closeModal() { document.getElementById("descModal").style.display = "none"; }
+
+    window.onload = fetchData;
+</script>
+
+</body>
+</html>

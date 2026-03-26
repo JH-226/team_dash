@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>협업증진팀 주간 세미나 대시보드</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+    <style>
+        /* 모달 기본 스타일 */
+        .modal { display: none; background-color: rgba(0,0,0,0.5); }
+        .modal.active { display: flex; }
+        /* 신호등 애니메이션 및 스타일 */
+        .traffic-light { width: 24px; height: 24px; border-radius: 50%; box-shadow: 0 0 5px rgba(0,0,0,0.2) inset; }
+        .bg-green-500.traffic-light { box-shadow: 0 0 10px #22c55e; }
+        .bg-yellow-400.traffic-light { box-shadow: 0 0 10px #facc15; }
+        .bg-red-500.traffic-light { box-shadow: 0 0 10px #ef4444; }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans min-h-screen p-6">
+
+    <div class="max-w-7xl mx-auto space-y-8">
+        <header class="bg-white p-6 rounded-lg shadow-md flex flex-col md:flex-row justify-between items-center">
+            <h1 class="text-3xl font-bold text-indigo-700">협업증진팀 주간 세미나 대시보드</h1>
+            <div class="mt-4 md:mt-0 flex items-center space-x-2 bg-gray-50 p-3 rounded border">
+                <span class="font-semibold">조회 기간:</span>
+                <input type="date" id="startDate" class="border rounded p-1 text-sm">
+                <span>~</span>
+                <input type="date" id="endDate" class="border rounded p-1 text-sm">
+            </div>
+        </header>
+
+        <section class="bg-white p-6 rounded-lg shadow-md">
+            <h2 class="text-xl font-bold mb-4 border-b pb-2">📋 상시업무 목록표</h2>
+            <div class="overflow-x-auto">
+                <table class="min-w-full bg-white text-sm text-left">
+                    <thead class="bg-gray-100 text-gray-600">
+                        <tr>
+                            <th class="py-3 px-4 border-b">프로젝트명</th>
+                            <th class="py-3 px-4 border-b">업무내용</th>
+                            <th class="py-3 px-4 border-b">담당자</th>
+                            <th class="py-3 px-4 border-b text-center">비고 (링크)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="daily-tasks-body">
+                        <tr><td colspan="4" class="py-4 text-center text-gray-500">데이터를 불러오는 중입니다...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section>
+            <h2 class="text-xl font-bold mb-4">📊 프로젝트별 현황</h2>
+            <div id="project-container" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                </div>
+        </section>
+    </div>
+
+    <div id="infoModal" class="modal fixed inset-0 items-center justify-center z-50">
+        <div class="bg-white w-11/12 md:w-1/2 p-6 rounded-lg shadow-xl relative">
+            <h3 class="text-xl font-bold mb-4" id="modal-project-title">프로젝트 상세정보</h3>
+            <div class="space-y-4 text-sm">
+                <div>
+                    <h4 class="font-semibold text-gray-700">배경 및 목적</h4>
+                    <p id="modal-project-bg" class="bg-gray-50 p-3 rounded mt-1"></p>
+                </div>
+                <div>
+                    <h4 class="font-semibold text-gray-700">업무 범위</h4>
+                    <p id="modal-project-scope" class="bg-gray-50 p-3 rounded mt-1"></p>
+                </div>
+            </div>
+            <button onclick="closeModal('infoModal')" class="mt-6 w-full bg-indigo-600 text-white py-2 rounded hover:bg-indigo-700">닫기</button>
+        </div>
+    </div>
+
+    <div id="logModal" class="modal fixed inset-0 items-center justify-center z-50">
+        <div class="bg-white w-11/12 md:w-3/4 max-h-[80vh] flex flex-col p-6 rounded-lg shadow-xl relative">
+            <h3 class="text-xl font-bold mb-4" id="log-modal-title">수행업무로그</h3>
+            <div class="overflow-y-auto flex-grow">
+                <table class="min-w-full text-sm text-left border">
+                    <thead class="bg-gray-100 sticky top-0">
+                        <tr>
+                            <th class="py-2 px-3 border-b">일자</th>
+                            <th class="py-2 px-3 border-b">수행내용</th>
+                            <th class="py-2 px-3 border-b">이슈 및 특이사항</th>
+                            <th class="py-2 px-3 border-b text-center">성과품</th>
+                        </tr>
+                    </thead>
+                    <tbody id="log-table-body">
+                        </tbody>
+                </table>
+            </div>
+            <button onclick="closeModal('logModal')" class="mt-4 w-full bg-indigo-600 text-white py-2 rounded hover:bg-indigo-700">닫기</button>
+        </div>
+    </div>
+
+    <script>
+        // 구글 시트 설정
+        const SHEET_ID = '1RwfLblZvIL__tW_k54u-UwpCrwIJCqZ8PIA1L_pSjbQ';
+        // 탭 이름 설정 (실제 시트의 탭 이름과 정확히 일치해야 합니다)
+        const TAB_TASKS = '분기 과업수행현황'; // 1번 탭 이름
+        const TAB_PROJECTS = '상시업무'; // 2번 탭 이름
+        const TAB_LOGS = '일일업무로그'; // 3번 탭 이름
+
+        // Google Charts 로드
+        google.charts.load('current', {'packages':['gauge']});
+        google.charts.setOnLoadCallback(initDashboard);
+
+        let allLogs = [];
+
+        async function initDashboard() {
+            try {
+                // 1. 상시업무 데이터 로드
+                const tasksData = await fetchSheetData(TAB_TASKS);
+                renderTasks(tasksData);
+
+                // 2. 업무로그 데이터 로드 (미리 로드해둠)
+                allLogs = await fetchSheetData(TAB_LOGS);
+
+                // 3. 프로젝트 현황 데이터 로드
+                const projectsData = await fetchSheetData(TAB_PROJECTS);
+                renderProjects(projectsData);
+            } catch (error) {
+                console.error("데이터 연동 실패:", error);
+                alert("데이터를 불러오는 중 오류가 발생했습니다. 구글 시트가 '웹에 게시' 상태인지 확인해주세요.");
+            }
+        }
+
+        // 구글 시트 데이터 Fetch (Google Visualization API)
+        async function fetchSheetData(sheetName) {
+            const queryUrl = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${sheetName}`;
+            const response = await fetch(queryUrl);
+            const text = await response.text();
+            // 불필요한 JS 래퍼 제거하고 JSON 파싱
+            const jsonStr = text.substring(47).slice(0, -2);
+            const data = JSON.parse(jsonStr);
+            
+            // 데이터 매핑: 셀(c) 객체에서 값(v) 추출
+            return data.table.rows.map(row => {
+                return row.c.map(cell => cell ? cell.v : '');
+            });
+        }
+
+        // 상시업무 렌더링
+        function renderTasks(data) {
+            const tbody = document.getElementById('daily-tasks-body');
+            tbody.innerHTML = '';
+            
+            // 첫 줄(헤더) 제외하고 반복 (index 1부터)
+            for(let i=1; i<data.length; i++) {
+                const row = data[i];
+                if(!row[0]) continue; // 빈 행 건너뛰기
+                
+                // 열 구조 가정: 0:프로젝트명, 1:업무내용, 2:담당자, 3:비고(링크)
+                const tr = document.createElement('tr');
+                tr.className = "border-b hover:bg-gray-50";
+                
+                let linkBtn = row[3] ? `<a href="${row[3]}" target="_blank" class="bg-blue-100 text-blue-700 px-3 py-1 rounded shadow-sm text-xs hover:bg-blue-200">링크 열기</a>` : '-';
+
+                tr.innerHTML = `
+                    <td class="py-2 px-4 font-medium">${row[0]}</td>
+                    <td class="py-2 px-4">${row[1]}</td>
+                    <td class="py-2 px-4">${row[2]}</td>
+                    <td class="py-2 px-4 text-center">${linkBtn}</td>
+                `;
+                tbody.appendChild(tr);
+            }
+        }
+
+        // 프로젝트별 현황 렌더링
+        function renderProjects(data) {
+            const container = document.getElementById('project-container');
+            container.innerHTML = '';
+
+            const today = new Date();
+
+            for(let i=1; i<data.length; i++) {
+                const row = data[i];
+                if(!row[0]) continue;
+
+                // 열 구조 가정: 
+                // 0:프로젝트명, 1:PM, 2:배경/목적, 3:업무범위, 4:실제진행률(%), 
+                // 5:계획시작일, 6:계획마감일, 7:착수일, 8:수행일
+                const pName = row[0];
+                const pm = row[1];
+                const bgInfo = row[2];
+                const scopeInfo = row[3];
+                const actualProgress = parseFloat(row[4]) || 0;
+                const planStart = parseDateStr(row[5]);
+                const planEnd = parseDateStr(row[6]);
+                const actStart = row[7] || '-';
+                const actEnd = row[8] || '-';
+
+                // 계획된 진행률 계산 (현재 날짜 기준)
+                let plannedProgress = 0;
+                if(planStart && planEnd) {
+                    const totalDuration = planEnd - planStart;
+                    const elapsed = today - planStart;
+                    if(elapsed < 0) plannedProgress = 0;
+                    else if(elapsed > totalDuration) plannedProgress = 100;
+                    else plannedProgress = (elapsed / totalDuration) * 100;
+                }
+
+                // 신호등 지표 계산 (계획 대비 실제 진행률)
+                let healthClass = "bg-green-500"; // 정상
+                let healthText = "정상";
+                const diff = actualProgress - plannedProgress;
+                
+                if(diff < -15) {
+                    healthClass = "bg-red-500"; // 지연
+                    healthText = "지연";
+                } else if(diff < -5) {
+                    healthClass = "bg-yellow-400"; // 지연 위험
+                    healthText = "지연 위험";
+                }
+
+                const cardId = `gauge_div_${i}`;
+
+                const card = document.createElement('div');
+                card.className = "bg-white p-5 rounded-lg shadow-md border-t-4 border-indigo-500 flex flex-col";
+                card.innerHTML = `
+                    <div class="flex justify-between items-start mb-3">
+                        <div>
+                            <h3 class="text-lg font-bold text-gray-800">${pName}</h3>
+                            <p class="text-sm text-gray-500">PM: ${pm}</p>
+                        </div>
+                        <div class="flex flex-col items-center">
+                            <div class="traffic-light ${healthClass}" title="${healthText}"></div>
+                            <span class="text-[10px] mt-1 text-gray-500">${healthText}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="flex space-x-2 mb-4">
+                        <button onclick="openInfoModal('${encodeURIComponent(pName)}', '${encodeURIComponent(bgInfo)}', '${encodeURIComponent(scopeInfo)}')" class="flex-1 bg-gray-100 border text-gray-700 py-1 rounded text-sm hover:bg-gray-200">ℹ️ 프로젝트 정보</button>
+                        <button onclick="openLogModal('${encodeURIComponent(pName)}')" class="flex-1 bg-gray-100 border text-gray-700 py-1 rounded text-sm hover:bg-gray-200">📝 수행업무로그</button>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4 text-sm mb-4 bg-gray-50 p-3 rounded">
+                        <div>
+                            <span class="block text-gray-400 text-xs">계획 기간</span>
+                            <span class="font-medium">${formatDateDisplay(row[5])} ~ ${formatDateDisplay(row[6])}</span>
+                        </div>
+                        <div>
+                            <span class="block text-gray-400 text-xs">수행 기간 (착수~현재)</span>
+                            <span class="font-medium">${formatDateDisplay(row[7])} ~ ${formatDateDisplay(row[8])}</span>
+                        </div>
+                    </div>
+
+                    <div class="mt-auto flex justify-between items-center border-t pt-4">
+                        <div class="w-1/2">
+                            <p class="text-xs text-gray-500 mb-1">일정 준수율 (계획 vs 실제)</p>
+                            <div class="text-xl font-bold text-indigo-700">${actualProgress.toFixed(1)}% <span class="text-sm font-normal text-gray-400">/ 계획 ${plannedProgress.toFixed(1)}%</span></div>
+                        </div>
+                        <div class="w-1/2 flex justify-end">
+                            <div id="${cardId}" style="width: 120px; height: 120px;"></div>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(card);
+
+                // 게이지 차트 그리기
+                drawGauge(cardId, actualProgress);
+            }
+        }
+
+        // 게이지 차트 렌더링 (Google Charts)
+        function drawGauge(elementId, value) {
+            const data = google.visualization.arrayToDataTable([
+                ['Label', 'Value'],
+                ['진행률', value]
+            ]);
+
+            const options = {
+                width: 120, height: 120,
+                redFrom: 0, redTo: 30,
+                yellowFrom: 30, yellowTo: 70,
+                greenFrom: 70, greenTo: 100,
+                minorTicks: 5,
+                max: 100
+            };
+
+            const chart = new google.visualization.Gauge(document.getElementById(elementId));
+            chart.draw(data, options);
+        }
+
+        // 모달 제어 함수
+        function openInfoModal(title, bg, scope) {
+            document.getElementById('modal-project-title').innerText = decodeURIComponent(title);
+            document.getElementById('modal-project-bg').innerText = decodeURIComponent(bg) || '내용 없음';
+            document.getElementById('modal-project-scope').innerText = decodeURIComponent(scope) || '내용 없음';
+            document.getElementById('infoModal').classList.add('active');
+        }
+
+        function openLogModal(title) {
+            const pName = decodeURIComponent(title);
+            document.getElementById('log-modal-title').innerText = `${pName} - 수행업무로그`;
+            
+            const tbody = document.getElementById('log-table-body');
+            tbody.innerHTML = '';
+
+            // 업무로그 필터링 (0번 컬럼이 프로젝트명이라고 가정)
+            const filteredLogs = allLogs.filter(row => row[0] === pName);
+
+            if(filteredLogs.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="py-4 text-center text-gray-500">등록된 로그가 없습니다.</td></tr>';
+            } else {
+                filteredLogs.forEach(row => {
+                    // 1:일자, 2:수행내용, 3:이슈/특이사항, 4:성과품링크
+                    let linkBtn = row[4] ? `<button onclick="window.open('${row[4]}', 'popup', 'width=800,height=600'); return false;" class="bg-gray-800 text-white px-2 py-1 rounded text-xs hover:bg-gray-700">팝업 열기</button>` : '-';
+                    
+                    const tr = document.createElement('tr');
+                    tr.className = "border-b hover:bg-gray-50";
+                    tr.innerHTML = `
+                        <td class="py-2 px-3 whitespace-nowrap">${formatDateDisplay(row[1])}</td>
+                        <td class="py-2 px-3">${row[2] || ''}</td>
+                        <td class="py-2 px-3 text-red-500">${row[3] || ''}</td>
+                        <td class="py-2 px-3 text-center">${linkBtn}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            }
+
+            document.getElementById('logModal').classList.add('active');
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('active');
+        }
+
+        // 유틸리티: 구글 시트 날짜 형식 처리 ("Date(2026,2,26)" 형태 대응)
+        function parseDateStr(dateVal) {
+            if(!dateVal) return null;
+            if(typeof dateVal === 'string' && dateVal.startsWith('Date(')) {
+                const parts = dateVal.match(/\d+/g);
+                if(parts && parts.length >= 3) {
+                    return new Date(parts[0], parts[1], parts[2]); // 시트에서 반환되는 month는 0-indexed 임
+                }
+            }
+            return new Date(dateVal);
+        }
+
+        function formatDateDisplay(dateVal) {
+            if(!dateVal) return '-';
+            if(typeof dateVal === 'string' && !dateVal.startsWith('Date(')) return dateVal;
+            const d = parseDateStr(dateVal);
+            if(!d || isNaN(d)) return dateVal;
+            return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`;
+        }
+    </script>
+</body>
+</html>

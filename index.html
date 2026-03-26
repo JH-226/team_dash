@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>협업증진팀 주간 세미나 대시보드</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    
+    <style>
+        .modal { display: none; background-color: rgba(0,0,0,0.5); }
+        .modal.active { display: flex; }
+        .traffic-light { width: 24px; height: 24px; border-radius: 50%; box-shadow: 0 0 5px rgba(0,0,0,0.2) inset; }
+        .bg-green-500.traffic-light { box-shadow: 0 0 10px #22c55e; }
+        .bg-yellow-400.traffic-light { box-shadow: 0 0 10px #facc15; }
+        .bg-red-500.traffic-light { box-shadow: 0 0 10px #ef4444; }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans min-h-screen p-6">
+
+    <div class="max-w-7xl mx-auto space-y-8">
+        <header class="bg-white p-6 rounded-lg shadow-md flex flex-col md:flex-row justify-between items-center">
+            <h1 class="text-3xl font-bold text-indigo-700">협업증진팀 주간 세미나</h1>
+            <div class="mt-4 md:mt-0 flex items-center space-x-2 bg-gray-50 p-3 rounded border">
+                <span class="font-semibold">조회 기간:</span>
+                <input type="date" id="startDate" class="border rounded p-1 text-sm">
+                <span>~</span>
+                <input type="date" id="endDate" class="border rounded p-1 text-sm">
+            </div>
+        </header>
+
+        <section>
+            <h2 class="text-xl font-bold mb-4">📊 프로젝트별 현황</h2>
+            <div id="project-container" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div class="col-span-full py-10 text-center text-gray-500 bg-white rounded-lg shadow">데이터를 불러오는 중입니다...</div>
+            </div>
+        </section>
+
+        <section class="bg-white p-6 rounded-lg shadow-md">
+            <h2 class="text-xl font-bold mb-4 border-b pb-2">📋 상시업무 목록표</h2>
+            <div class="overflow-x-auto">
+                <table class="min-w-full bg-white text-sm text-left">
+                    <thead class="bg-gray-100 text-gray-600">
+                        <tr>
+                            <th class="py-3 px-4 border-b">프로젝트명</th>
+                            <th class="py-3 px-4 border-b">업무내용</th>
+                            <th class="py-3 px-4 border-b">담당자</th>
+                            <th class="py-3 px-4 border-b text-center">비고</th>
+                        </tr>
+                    </thead>
+                    <tbody id="daily-tasks-body">
+                        <tr><td colspan="4" class="py-4 text-center text-gray-500">데이터를 불러오는 중입니다...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <div id="infoModal" class="modal fixed inset-0 items-center justify-center z-50">
+        <div class="bg-white w-11/12 md:w-1/2 p-6 rounded-lg shadow-xl relative">
+            <h3 class="text-xl font-bold mb-4" id="modal-project-title">프로젝트 상세정보</h3>
+            <div class="space-y-4 text-sm">
+                <div>
+                    <h4 class="font-semibold text-indigo-700 border-b pb-1 mb-2">배경 및 목적</h4>
+                    <p id="modal-project-bg" class="bg-gray-50 p-3 rounded whitespace-pre-wrap"></p>
+                </div>
+                <div>
+                    <h4 class="font-semibold text-indigo-700 border-b pb-1 mb-2">업무 범위</h4>
+                    <p id="modal-project-scope" class="bg-gray-50 p-3 rounded whitespace-pre-wrap"></p>
+                </div>
+            </div>
+            <button onclick="closeModal('infoModal')" class="mt-6 w-full bg-indigo-600 text-white py-2 rounded hover:bg-indigo-700">닫기</button>
+        </div>
+    </div>
+
+    <div id="logModal" class="modal fixed inset-0 items-center justify-center z-50">
+        <div class="bg-white w-11/12 md:w-3/4 max-h-[80vh] flex flex-col p-6 rounded-lg shadow-xl relative">
+            <h3 class="text-xl font-bold mb-4" id="log-modal-title">수행업무로그</h3>
+            <div class="overflow-y-auto flex-grow">
+                <table class="min-w-full text-sm text-left border">
+                    <thead class="bg-gray-100 sticky top-0 shadow-sm">
+                        <tr>
+                            <th class="py-2 px-3 border-b">일자</th>
+                            <th class="py-2 px-3 border-b">수행내용</th>
+                            <th class="py-2 px-3 border-b">이슈 및 특이사항</th>
+                            <th class="py-2 px-3 border-b text-center">성과품</th>
+                        </tr>
+                    </thead>
+                    <tbody id="log-table-body">
+                        </tbody>
+                </table>
+            </div>
+            <button onclick="closeModal('logModal')" class="mt-4 w-full bg-indigo-600 text-white py-2 rounded hover:bg-indigo-700">닫기</button>
+        </div>
+    </div>
+
+    <script>
+        const SHEET_ID = '1RwfLblZvIL__tW_k54u-UwpCrwIJCqZ8PIA1L_pSjbQ';
+        
+        // 탭 이름 설정
+        const TAB_PROJECTS = '분기 과업수행현황';
+        const TAB_TASKS = '상시업무';
+        const TAB_LOGS = '일일업무로그';
+
+        google.charts.load('current', {'packages':['gauge']});
+        google.charts.setOnLoadCallback(initDashboard);
+
+        let allLogs = [];
+
+        async function initDashboard() {
+            try {
+                // 배열 순서 꼬임을 방지하기 위해 각각 독립적으로 데이터 호출
+                const projectsData = await fetchCSV(TAB_PROJECTS);
+                const tasksData = await fetchCSV(TAB_TASKS);
+                const logsData = await fetchCSV(TAB_LOGS);
+
+                allLogs = logsData;
+
+                // 데이터 렌더링
+                renderProjects(projectsData);
+                renderTasks(tasksData);
+                
+            } catch (error) {
+                console.error("데이터 연동 실패:", error);
+                alert("데이터 연동에 실패했습니다. 시트가 '웹에 게시(csv 형식)' 되어 있는지 확인해주세요.");
+            }
+        }
+
+        // CSV 데이터를 파싱하는 함수
+        function fetchCSV(sheetName) {
+            return new Promise((resolve, reject) => {
+                const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
+                Papa.parse(url, {
+                    download: true,
+                    header: true, // 첫 행을 컬럼명으로 사용
+                    skipEmptyLines: true,
+                    complete: function(results) {
+                        resolve(results.data);
+                    },
+                    error: function(err) {
+                        reject(err);
+                    }
+                });
+            });
+        }
+
+        // 상시업무 렌더링
+        function renderTasks(data) {
+            const tbody = document.getElementById('daily-tasks-body');
+            tbody.innerHTML = '';
+            
+            if (!data || data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="py-4 text-center text-gray-500">데이터가 없습니다.</td></tr>';
+                return;
+            }
+
+            data.forEach(row => {
+                if(!row['프로젝트명']) return;
+
+                let linkBtn = '-';
+                if(row['비고'] && row['비고'].startsWith('http')) {
+                    linkBtn = `<button onclick="window.open('${row['비고']}', '_blank')" class="bg-blue-50 text-blue-600 px-3 py-1 rounded border border-blue-200 hover:bg-blue-100 text-xs transition">링크 열기</button>`;
+                } else if(row['비고']) {
+                    linkBtn = row['비고'];
+                }
+
+                const tr = document.createElement('tr');
+                tr.className = "border-b hover:bg-gray-50 transition";
+                tr.innerHTML = `
+                    <td class="py-2 px-4 font-medium">${row['프로젝트명'] || '-'}</td>
+                    <td class="py-2 px-4">${row['업무내용'] || '-'}</td>
+                    <td class="py-2 px-4">${row['담당자'] || '-'}</td>
+                    <td class="py-2 px-4 text-center">${linkBtn}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // 프로젝트별 현황 렌더링
+        function renderProjects(data) {
+            const container = document.getElementById('project-container');
+            container.innerHTML = '';
+            const today = new Date();
+
+            if (!data || data.length === 0) {
+                container.innerHTML = '<div class="col-span-full py-10 text-center text-gray-500 bg-white rounded-lg shadow">데이터가 없습니다.</div>';
+                return;
+            }
+
+            data.forEach((row, index) => {
+                const pName = row['프로젝트명'];
+                if(!pName) return;
+
+                const bgInfo = row['배경 및 목적'] || '';
+                const scopeInfo = row['업무범위'] || '';
+                const actualProgress = parseFloat(row['진행률(%)']) || 0;
+                
+                const planStartStr = row['계획 시작일'];
+                const planEndStr = row['계획 마감일'];
+                const actStartStr = row['착수일'];
+                const actEndStr = row['수행일'];
+                
+                const planStart = parseDateStr(planStartStr);
+                const planEnd = parseDateStr(planEndStr);
+
+                // 계획된 진행률 계산
+                let plannedProgress = 0;
+                if(planStart && planEnd) {
+                    const totalDuration = planEnd - planStart;
+                    const elapsed = today - planStart;
+                    if(elapsed < 0) plannedProgress = 0;
+                    else if(elapsed > totalDuration) plannedProgress = 100;
+                    else plannedProgress = (elapsed / totalDuration) * 100;
+                }
+
+                // 신호등 지표
+                let healthClass = "bg-green-500";
+                let healthText = "정상";
+                const diff = actualProgress - plannedProgress;
+                
+                if(diff < -15) {
+                    healthClass = "bg-red-500";
+                    healthText = "지연";
+                } else if(diff < -5) {
+                    healthClass = "bg-yellow-400";
+                    healthText = "지연 위험";
+                }
+
+                const cardId = `gauge_div_${index}`;
+                const card = document.createElement('div');
+                card.className = "bg-white p-5 rounded-lg shadow-md border-t-4 border-indigo-500 flex flex-col hover:shadow-lg transition";
+                
+                card.innerHTML = `
+                    <div class="flex justify-between items-start mb-3">
+                        <div>
+                            <span class="text-xs font-bold text-indigo-500 mb-1 block">${row['진행상태'] || '상태미상'} (우선순위: ${row['우선순위'] || '-'})</span>
+                            <h3 class="text-lg font-bold text-gray-800">${pName}</h3>
+                            <p class="text-sm text-gray-500">PM: <span class="font-medium text-gray-700">${row['PM'] || '-'}</span></p>
+                        </div>
+                        <div class="flex flex-col items-center">
+                            <div class="traffic-light ${healthClass}" title="${healthText}"></div>
+                            <span class="text-[10px] mt-1 text-gray-500 font-bold">${healthText}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="flex space-x-2 mb-4">
+                        <button onclick="openInfoModal('${encodeURIComponent(pName)}', '${encodeURIComponent(bgInfo)}', '${encodeURIComponent(scopeInfo)}')" class="flex-1 bg-white border border-gray-300 text-gray-700 py-1.5 rounded text-sm hover:bg-gray-50 transition shadow-sm">ℹ️ 프로젝트 정보</button>
+                        <button onclick="openLogModal('${encodeURIComponent(pName)}')" class="flex-1 bg-white border border-gray-300 text-gray-700 py-1.5 rounded text-sm hover:bg-gray-50 transition shadow-sm">📝 수행업무로그</button>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4 text-xs mb-4 bg-gray-50 p-3 rounded border">
+                        <div>
+                            <span class="block text-gray-500 mb-1">계획 기간 <span class="text-indigo-600 font-medium">(${row['계획기간'] || '-'})</span></span>
+                            <span class="font-medium text-gray-800">${formatDisplay(planStartStr)} ~ ${formatDisplay(planEndStr)}</span>
+                        </div>
+                        <div>
+                            <span class="block text-gray-500 mb-1">수행 기간 <span class="text-indigo-600 font-medium">(${row['수행기간'] || '-'})</span></span>
+                            <span class="font-medium text-gray-800">${formatDisplay(actStartStr)} ~ ${formatDisplay(actEndStr)}</span>
+                        </div>
+                    </div>
+
+                    <div class="mt-auto flex justify-between items-center border-t pt-4">
+                        <div class="w-1/2">
+                            <p class="text-xs text-gray-500 mb-1">일정 준수율 (실제 / 계획)</p>
+                            <div class="text-2xl font-bold text-indigo-700">${actualProgress.toFixed(1)}%</div>
+                            <div class="text-xs font-normal text-gray-500 mt-1">목표: ${plannedProgress.toFixed(1)}%</div>
+                        </div>
+                        <div class="w-1/2 flex justify-end">
+                            <div id="${cardId}" style="width: 120px; height: 120px;"></div>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(card);
+
+                setTimeout(() => drawGauge(cardId, actualProgress), 100);
+            });
+        }
+
+        // 게이지 차트
+        function drawGauge(elementId, value) {
+            if(!document.getElementById(elementId)) return;
+            const data = google.visualization.arrayToDataTable([
+                ['Label', 'Value'],
+                ['진행률', value]
+            ]);
+
+            const options = {
+                width: 120, height: 120,
+                redFrom: 0, redTo: 30,
+                yellowFrom: 30, yellowTo: 70,
+                greenFrom: 70, greenTo: 100,
+                minorTicks: 5, max: 100
+            };
+
+            const chart = new google.visualization.Gauge(document.getElementById(elementId));
+            chart.draw(data, options);
+        }
+
+        // 모달창: 프로젝트 정보
+        function openInfoModal(title, bg, scope) {
+            document.getElementById('modal-project-title').innerText = decodeURIComponent(title);
+            document.getElementById('modal-project-bg').innerText = decodeURIComponent(bg) || '등록된 배경 및 목적이 없습니다.';
+            document.getElementById('modal-project-scope').innerText = decodeURIComponent(scope) || '등록된 업무범위가 없습니다.';
+            document.getElementById('infoModal').classList.add('active');
+        }
+
+        // 모달창: 수행업무로그
+        function openLogModal(title) {
+            const pName = decodeURIComponent(title);
+            document.getElementById('log-modal-title').innerText = `${pName} - 일일업무로그`;
+            
+            const tbody = document.getElementById('log-table-body');
+            tbody.innerHTML = '';
+
+            const filteredLogs = allLogs.filter(row => row['프로젝트명'] === pName);
+
+            if(filteredLogs.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="py-6 text-center text-gray-500">이 프로젝트에 등록된 업무로그가 없습니다.</td></tr>';
+            } else {
+                filteredLogs.sort((a, b) => new Date(parseDateStr(b['일자'])) - new Date(parseDateStr(a['일자'])));
+
+                filteredLogs.forEach(row => {
+                    let linkBtn = '-';
+                    if(row['성과품링크'] && row['성과품링크'].startsWith('http')) {
+                         linkBtn = `<button onclick="window.open('${row['성과품링크']}', 'popup', 'width=900,height=700'); return false;" class="bg-gray-800 text-white px-3 py-1 rounded text-xs hover:bg-gray-700 shadow-sm transition">성과품 보기</button>`;
+                    }
+
+                    const tr = document.createElement('tr');
+                    tr.className = "border-b hover:bg-gray-50";
+                    tr.innerHTML = `
+                        <td class="py-3 px-3 whitespace-nowrap text-gray-600">${formatDisplay(row['일자'])}</td>
+                        <td class="py-3 px-3">${row['수행내용'] || '-'}</td>
+                        <td class="py-3 px-3 text-red-500 text-sm">${row['이슈 및 특이사항'] || '-'}</td>
+                        <td class="py-3 px-3 text-center">${linkBtn}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            }
+            document.getElementById('logModal').classList.add('active');
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('active');
+        }
+
+        function parseDateStr(dateStr) {
+            if(!dateStr) return null;
+            const cleanedStr = dateStr.replace(/\./g, '-').trim();
+            const d = new Date(cleanedStr);
+            return isNaN(d) ? null : d;
+        }
+
+        function formatDisplay(val) {
+            return val ? val : '-';
+        }
+    </script>
+</body>
+</html>
